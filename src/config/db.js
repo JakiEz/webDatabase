@@ -1,17 +1,30 @@
 const { Pool } = require('pg');
 
-// Create a new Pool instance with your PostgreSQL connection details
-const pool = new Pool({
-  user: 'postgres',      // Replace with your PostgreSQL username
-  host: 'localhost',          // Host where PostgreSQL is running
-  database: 'badMinton',  // Replace with your database name
-  password: '12345678',  // Replace with your actual password as a string
-  port: 5432,                 // Default PostgreSQL port
-});
 
-// Test that the connection is working
+const pool = new Pool({
+  user: 'postgres',
+  host: 'localhost',
+  database: 'badMinton',
+  password: "12345678",
+  port: process.env.DB_PORT || 5432,
+
+});
+  
+const checkConnection = async () => {
+    try {
+      const result = await pool.query('SELECT NOW()');
+      console.log('✅ Database connection successful:', result.rows[0].now);
+      return true;
+    } catch (err) {
+      console.error('❌ Database connection failed:', err.message);
+      return false;
+    }
+  };
+
+checkConnection();
+
 pool.on('connect', () => {
-  console.log('Connected to PostgreSQL database');
+  console.log('Connected to the database');
 });
 
 pool.on('error', (err) => {
@@ -19,4 +32,6 @@ pool.on('error', (err) => {
   process.exit(-1);
 });
 
-module.exports = pool;
+
+
+module.exports = {pool,checkConnection};
