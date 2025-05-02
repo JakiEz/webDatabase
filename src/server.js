@@ -122,6 +122,94 @@ app.post('/sneakers', async (req, res) => {
   }
 });
 
+
+app.post('/createUsers', async (req, res) => {
+  const {clerk_id, email, role} = req.body;
+  try {
+
+    const checkResut = await pool.pool.query('SELECT * from users where clerk_id = $1', [clerk_id]);
+
+    if (checkResut.rows.length > 0 ){
+      return res.send("user with this clerk ID already exist")
+    }
+
+    const result = await pool.pool.query(
+      'INSERT INTO users (clerk_id, email, role) VALUES ($1, $2, $3) RETURNING *',
+      [clerk_id, email, role]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/getUserRole', async (req, res) => {
+  const { clerk_id } = req.query;
+  try {
+    const result = await pool.pool.query(
+      'SELECT role FROM users WHERE clerk_id = $1',
+      [clerk_id]
+    );
+    
+    if (result.rows.length > 0) {
+      res.json({ role: result.rows[0].role });
+    } else {
+      res.status(404).json({ error: "User not found" });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/createUserTable', async (req, res) => {
+  try {
+    await pool.pool.query(
+      'CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, clerk_id VARCHAR(255) UNIQUE, email VARCHAR(255) UNIQUE NOT NULL, role VARCHAR(50) DEFAULT \'user\')'
+    );
+    res.status(200).send({message: "SUCCESSFULLY CREATED USERS TABLE"});
+  } catch (err) {
+    console.log(err);
+    res.sendStatus(500);
+  }
+});
+
+app.get('/getUsers', async (req, res) => {
+  try {
+    console.log('Starting query to users table');
+    const result = await pool.pool.query('SELECT * FROM users');
+    console.log(`Query successful, found ${result.rows.length} rows`);
+    return res.status(200).json(result.rows);
+  } catch (err) {
+    console.error('Database error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Update user role endpoint
+app.put('/updateUserRole', async (req, res) => {
+  const { clerk_id, role } = req.body;
+  
+  if (!clerk_id || !role) {
+    return res.status(400).json({ error: "clerk_id and role are required" });
+  }
+  
+  try {
+    const result = await pool.pool.query(
+      'UPDATE users SET role = $1 WHERE clerk_id = $2 RETURNING *',
+      [role, clerk_id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    return res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error('Database error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/getSneakers', async (req, res) => {
   try {
     console.log('Starting query to sneakers table');
@@ -134,6 +222,25 @@ app.get('/getSneakers', async (req, res) => {
   }
 });
 
+// GET product by ID (matches /products/:id pattern)
+app.get('/getSneaker/:id', async (req, res) => {
+  try {
+    const productId = req.params.id; // Extracts "1" from /products/1
+    const result = await pool.pool.query(
+      'SELECT * FROM sneakers WHERE id = $1',
+      [productId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    res.json(result.rows[0]); // Return single product
+  } catch (err) {
+    console.error('Database error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
   
 app.listen(port, ()=> console.log(`Server has started on port ${port}`))
