@@ -331,7 +331,7 @@ app.post('/insertSneaker', async (req, res) => {
       }
     }
     
-    // Insert colors
+
     if (colors && typeof colors === 'number') {
       // Insert the single count value
       await client.query(
@@ -362,8 +362,8 @@ app.post('/createSneakerTables', async (req, res) => {
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         subtitle TEXT,
-        price TEXT,
-        "mainImage" TEXT,
+        price TEXT NOT NULL,
+        "mainImage" TEXT NOT NULL,
         tagline TEXT,
         "environmentalInfo" TEXT,
         description TEXT,
@@ -896,5 +896,168 @@ app.post('/insertOrder', async (req, res) => {
   }
 });
 
-  
+app.get('/getOrders', async (req, res) => {
+  const client = await pool.pool.connect();
+  try {
+    const result = await client.query(`
+      SELECT 
+        o.id AS order_id,
+        o.user_id,
+        o.full_name,
+        o.email,
+        o.address,
+        o.city,
+        o.postal_code,
+        o.country,
+        o.payment_method,
+        o.total_amount,
+        o.status,
+        o.created_at,
+        json_agg(
+          json_build_object(
+            'id', oi.id,
+            'product_id', oi.product_id,
+            'name', oi.name,
+            'price', oi.price,
+            'quantity', oi.quantity,
+            'size', oi.size,
+            'image', oi.image
+          )
+        ) AS items
+      FROM orders o
+      LEFT JOIN order_items oi ON o.id::TEXT = oi.order_id
+      GROUP BY o.id
+      ORDER BY o.created_at DESC
+    `);
+
+    res.status(200).json(result.rows);
+  } catch (err) {
+    console.error('Error fetching orders:', err);
+    res.status(500).send({ message: 'Error fetching orders', error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/updateOrderStatus', async (req, res) => {
+
+  const { order_id, status } = req.body;
+
+  // Validate the required parameters
+  if (!order_id || !status) {
+    return res.status(400).send({ 
+      message: 'Missing required parameters', 
+      details: 'Both order_id and status are required' 
+    });
+  }
+
+  // Validate status value
+  const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).send({ 
+      message: 'Invalid status value', 
+      details: `Status must be one of: ${validStatuses.join(', ')}` 
+    });
+  }
+
+  const client = await pool.pool.connect();
+  try {
+    // Begin a transaction
+    await client.query('BEGIN');
+
+    // Update the order status in the database
+    const updateQuery = `
+      UPDATE orders
+      SET status = $1, created_at = NOW()
+      WHERE id = $2
+      RETURNING id, status, created_at
+    `;
+    
+    const result = await client.query(updateQuery, [status, order_id]);
+
+    // Check if any rows were affected
+    if (result.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).send({ message: 'Order not found' });
+    }
+
+    // Commit the transaction
+    await client.query('COMMIT');
+
+    // Return the updated order data
+    res.status(200).send({
+      message: 'Order status updated successfully',
+      order: result.rows[0]
+    });
+  } catch (err) {
+    // Rollback in case of error
+    await client.query('ROLLBACK');
+    console.error('Error updating order status:', err);
+    res.status(500).send({ 
+      message: 'Error updating order status', 
+      error: err.message 
+    });
+  } finally {
+    // Release the client back to the pool
+    client.release();
+  }
+});  
+
+// RESTful endpoint for fetching orders by user ID
+app.get('/:userId/orders', async (req, res) => {
+  // Get userId from URL parameter
+  const userId = req.params.userId;
+
+  console.log('Fetching orders for user:', userId);
+
+  const client = await pool.pool.connect();
+  try {
+    // Query with parameter binding for security
+    const result = await client.query(`
+      SELECT 
+        o.id AS order_id,
+        o.user_id,
+        o.full_name,
+        o.email,
+        o.address,
+        o.city,
+        o.postal_code,
+        o.country,
+        o.payment_method,
+        o.total_amount,
+        o.status,
+        o.created_at,
+        json_agg(
+          json_build_object(
+            'id', oi.id,
+            'product_id', oi.product_id,
+            'name', oi.name,
+            'price', oi.price,
+            'quantity', oi.quantity,
+            'size', oi.size,
+            'image', oi.image
+          )
+        ) AS items
+      FROM orders o
+      LEFT JOIN order_items oi ON o.id::TEXT = oi.order_id
+      WHERE o.user_id = $1
+      GROUP BY o.id
+      ORDER BY o.created_at DESC
+    `, [userId]);
+
+    console.log(`Found ${result.rowCount} orders for user ${userId}`);
+
+    // Return the filtered orders
+    res.status(200).json(result.rows);
+  } catch (err) {
+    console.error('Error fetching user orders:', err);
+    res.status(500).json({ 
+      message: 'Error fetching user orders', 
+      error: err.message 
+    });
+  } finally {
+    client.release();
+  }
+});
+
 app.listen(port, ()=> console.log(`Server has started on port ${port}`))
