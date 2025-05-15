@@ -581,62 +581,101 @@ app.put('/updateUserRole', async (req, res) => {
 app.get('/getSneakers', async (req, res) => {
   const client = await pool.pool.connect();
   try {
-    console.log('Starting query to get sneakers with related data');
+    console.log('Starting query to get all sneakers with related data');
     
-    // Get all products
-    const productsResult = await client.query('SELECT * FROM products');
-    const products = productsResult.rows;
+    // Complex query with left joins to get all related data at once
+    const result = await client.query(`
+      SELECT 
+        p.*,
+        t.id as thumb_id, t.img as thumb_img, t.alt as thumb_alt,
+        s.id as size_id, s.label as size_label,
+        pc.color
+      FROM products p
+      LEFT JOIN thumbnails t ON p.id = t.product_id
+      LEFT JOIN sizes s ON p.id = s.product_id
+      LEFT JOIN product_colors pc ON p.id = pc.product_id
+      ORDER BY p.id
+    `);
     
-    // For each product, get related data
-    const productsWithRelatedData = await Promise.all(products.map(async (product) => {
-      // Get thumbnails
-      const thumbnailsResult = await client.query(
-        'SELECT * FROM thumbnails WHERE product_id = $1',
-        [product.id]
-      );
-      
-      // Get sizes
-      const sizesResult = await client.query(
-        'SELECT * FROM sizes WHERE product_id = $1',
-        [product.id]
-      );
-      
-      // Get colors
-      const colorsResult = await client.query(
-        'SELECT * FROM product_colors WHERE product_id = $1',
-        [product.id]
-      );
-      
-      // Combine all data
-      return {
-        ...product,
-        thumbnails: thumbnailsResult.rows,
-        sizes: sizesResult.rows,
-        colors: colorsResult.rows
-      };
-    }));
+    if (result.rows.length === 0) {
+      return res.status(200).json([]);
+    }
     
-    console.log(`Query successful, found ${productsWithRelatedData.length} products with related data`);
-    return res.status(200).json(productsWithRelatedData);
+    // Group the results by product ID
+    const productsMap = new Map();
+    
+    result.rows.forEach(row => {
+      if (!productsMap.has(row.id)) {
+        // Initialize new product object if we haven't seen this ID before
+        productsMap.set(row.id, {
+          id: row.id,
+          name: row.name,
+          subtitle: row.subtitle,
+          price: row.price,
+          mainImage: row.mainImage,
+          tagline: row.tagline,
+          environmentalInfo: row.environmentalInfo,
+          description: row.description,
+          colorName: row.colorName,
+          styleCode: row.styleCode,
+          madeIn: row.madeIn,
+          isNew: row.isNew,
+          isBestSeller: row.isBestSeller,
+          thumbnails: [],
+          sizes: [],
+          colors: []
+        });
+      }
+      
+      const product = productsMap.get(row.id);
+      
+      // Add thumbnail if it exists and isn't already added
+      if (row.thumb_id && !product.thumbnails.some(t => t.id === row.thumb_id)) {
+        product.thumbnails.push({
+          id: row.thumb_id,
+          img: row.thumb_img,
+          alt: row.thumb_alt
+        });
+      }
+      
+      // Add size if it exists and isn't already added
+      if (row.size_id && !product.sizes.some(s => s.id === row.size_id)) {
+        product.sizes.push({
+          id: row.size_id,
+          label: row.size_label
+        });
+      }
+      
+      // Add color if it exists and isn't already added
+      if (row.color && !product.colors.includes(row.color)) {
+        product.colors.push(row.color);
+      }
+    });
+    
+    // Convert map values to array for response
+    const productsArray = Array.from(productsMap.values());
+    
+    console.log(`Query successful, found ${productsArray.length} products with related data`);
+    res.status(200).json(productsArray);
   } catch (err) {
     console.error('Database error:', err);
-    return res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Server error' });
   } finally {
     client.release();
   }
 });
 
-app.get('/getSneakers', async (req, res) => {
-  try {
-    console.log('Starting query to sneakers table');
-    const result = await pool.pool.query('SELECT * from products');
-    console.log(`Query successful, found ${result.rows.length} rows`);
-    return res.status(200).json(result.rows);
-  } catch (err) {
-    console.error('Database error:', err);
-    return res.status(500).json({ error: err.message });
-  }
-});
+// app.get('/getSneakers', async (req, res) => {
+//   try {
+//     console.log('Starting query to sneakers table');
+//     const result = await pool.pool.query('SELECT * from products');
+//     console.log(`Query successful, found ${result.rows.length} rows`);
+//     return res.status(200).json(result.rows);
+//   } catch (err) {
+//     console.error('Database error:', err);
+//     return res.status(500).json({ error: err.message });
+//   }
+// });
 
 
 app.get('/getSneaker/:id', async (req, res) => {
@@ -735,7 +774,7 @@ app.post('/createOrderTables', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    // Create orders table
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
@@ -753,7 +792,7 @@ app.post('/createOrderTables', async (req, res) => {
       )
     `);
     
-    // Create order_items table
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS order_items (
         id SERIAL PRIMARY KEY,
