@@ -6,9 +6,13 @@ const port = process.env.PORT || 1337;
 const cors = require("cors");
 const app = express();
 app.use(cors({
-  origin:'*',
-  methods:['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type']
+  origin: [
+    'http://localhost:3000',  // Local development
+    'https://crud-post-l2uk.vercel.app',  // Your Vercel frontend
+    'https://*.vercel.app'  // All Vercel preview deployments
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
 // dotenv.config();
 app.use(express.json());
