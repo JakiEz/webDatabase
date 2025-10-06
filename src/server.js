@@ -1,6 +1,8 @@
+require('dotenv').config();
+
 const express = require("express");
 const pool = require("./config/db.js");
-const port = "1337";
+const port = process.env.PORT || 1337;
 const cors = require("cors");
 const app = express();
 app.use(cors());
@@ -442,26 +444,26 @@ app.delete("/deleteProduct/:id", async (req, res) => {
     await client.query("BEGIN");
     
     // Check if product is referenced in order_items
-    const orderItemsCheck = await client.query(
-      "SELECT COUNT(*) FROM order_items WHERE product_id = $1",
-      [id]
-    );
+    // const orderItemsCheck = await client.query(
+    //   "SELECT COUNT(*) FROM order_items WHERE product_id = $1",
+    //   [id]
+    // );
     
-    if (parseInt(orderItemsCheck.rows[0].count) > 0) {
-      console.log(`Product ${id} is referenced in ${orderItemsCheck.rows[0].count} order items`);
+    // if (parseInt(orderItemsCheck.rows[0].count) > 0) {
+    //   console.log(`Product ${id} is referenced in ${orderItemsCheck.rows[0].count} order items`);
       
-      // You can either:
-      // 1. Abort the deletion
-      // await client.query("ROLLBACK");
-      // return res.status(409).json({ 
-      //   message: "Cannot delete product that is part of existing orders",
-      //   orderItemsCount: parseInt(orderItemsCheck.rows[0].count)
-      // });
+    //   // You can either:
+    //   // 1. Abort the deletion
+    //   // await client.query("ROLLBACK");
+    //   // return res.status(409).json({ 
+    //   //   message: "Cannot delete product that is part of existing orders",
+    //   //   orderItemsCount: parseInt(orderItemsCheck.rows[0].count)
+    //   // });
       
-      // 2. Or delete the order items first (potentially risky)
-      console.log(`Deleting order items referencing product ${id}`);
-      await client.query("UPDATE order_items SET product_id = NULL WHERE product_id = $1", [id]);
-    }
+    //   // 2. Or delete the order items first (potentially risky)
+    //   console.log(`Deleting order items referencing product ${id}`);
+    //   await client.query("UPDATE order_items SET product_id = NULL WHERE product_id = $1", [id]);
+    // }
 
     // Delete related data first
     const thumbResult = await client.query("DELETE FROM thumbnails WHERE product_id = $1", [id]);
