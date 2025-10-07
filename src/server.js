@@ -133,25 +133,23 @@ app.post("/");
 app.post("/createUsers", async (req, res) => {
   const { clerk_id, email, role } = req.body;
   console.log('Received data:', { clerk_id, email, role });
-  try {
-    const checkResut = await pool.pool.query(
-      "SELECT * from users where clerk_id = $1",
-      [clerk_id]
-    );
-
-    if (checkResut.rows.length > 0) {
-      return res.send("user with this clerk ID already exist");
-    }
-    
-    const result = await pool.pool.query(
-      "INSERT INTO users (clerk_id, email, role) VALUES ($1, $2, $3) RETURNING *",
-      [clerk_id, email, role]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.log("Creating user failed", err);
-    res.status(500).json({ error: err.message });
-  }
+    try {
+        // Insert or update if clerk_id exists
+        const result = await pool.pool.query(
+          `INSERT INTO users (clerk_id, email, role) 
+          VALUES ($1, $2, $3)
+          ON CONFLICT (clerk_id) 
+          DO UPDATE SET email = $2, role = $3
+          RETURNING *`,
+          [clerk_id, email, role]
+        );
+        
+        res.status(201).json(result.rows[0]);
+      } catch (err) {
+        console.error("Error creating user:", err);
+        res.status(500).json({ error: err.message });
+      }
+  
 });
 
 app.get("/getUserRole", async (req, res) => {
